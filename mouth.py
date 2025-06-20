@@ -158,15 +158,29 @@ if __name__ == "__main__":
         mouth = Mouth()
         
         print("\nEnter the text to convert to speech.")
-        print("You can enter multiple lines. Press Ctrl+D to finish.")
+        print("Press Enter twice (double Enter) to finish.")
         
-        input_lines = sys.stdin.readlines()
+        input_lines = []
+        empty_line_count = 0
+        
+        while True:
+            try:
+                line = input()
+                if line.strip() == "":
+                    empty_line_count += 1
+                    if empty_line_count >= 2:
+                        break
+                else:
+                    empty_line_count = 0
+                    input_lines.append(line)
+            except EOFError:
+                break
         
         if not input_lines:
             print("No input provided. Exiting.")
             sys.exit(0)
             
-        text_to_speak = "".join(input_lines).strip()
+        text_to_speak = "\n".join(input_lines).strip()
         
         if text_to_speak:
             mouth.speak(text_to_speak)

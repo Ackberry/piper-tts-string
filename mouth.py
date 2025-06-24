@@ -156,7 +156,7 @@ class Mouth:
                 # Get WAV file parameters
                 channels = wav_file.getnchannels()
                 sample_width = wav_file.getsampwidth()
-                framerate = wav_file.getframerate()
+                original_rate = wav_file.getframerate()
                 n_frames = wav_file.getnframes()
                 
                 # Read all frames
@@ -170,16 +170,35 @@ class Mouth:
                 print("Playing audio...")
                 try:
                     # Try playing with original framerate
-                    sd.play(audio_data, framerate)
+                    sd.play(audio_data, original_rate)
                     sd.wait()
                 except sd.PortAudioError as e:
                     if "Invalid sample rate" in str(e):
-                        print("Sample rate issue detected. Trying with default sample rate...")
-                        # Try with a standard sample rate
-                        standard_rates = [44100, 48000, 22050, 16000]
+                        print(f"Sample rate issue detected. Original rate: {original_rate}Hz")
+                        # Try with a standard sample rate with proper resampling
+                        standard_rates = [48000, 44100, 22050, 16000]
+                        
+                        # Normalize audio data to float32 for resampling
+                        if audio_data.dtype != np.float32:
+                            audio_data = audio_data.astype(np.float32)
+                            if audio_data.dtype == np.int16:
+                                audio_data /= 32768.0  # Normalize int16 to float32
+                            elif audio_data.dtype == np.int32:
+                                audio_data /= 2147483648.0  # Normalize int32 to float32
+                        
                         for rate in standard_rates:
                             try:
-                                sd.play(audio_data, rate)
+                                # Calculate resampling ratio
+                                ratio = rate / original_rate
+                                
+                                # Resample audio using linear interpolation
+                                new_length = int(len(audio_data) * ratio)
+                                time_original = np.linspace(0, 1, len(audio_data))
+                                time_new = np.linspace(0, 1, new_length)
+                                resampled_audio = np.interp(time_new, time_original, audio_data)
+                                
+                                print(f"Attempting playback at {rate}Hz with resampling...")
+                                sd.play(resampled_audio, rate)
                                 sd.wait()
                                 print(f"Successfully played audio at {rate}Hz")
                                 break

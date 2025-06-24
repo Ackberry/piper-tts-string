@@ -10,6 +10,7 @@ import tempfile
 import sounddevice as sd
 import wave
 import numpy as np
+from scipy import signal
 
 class Mouth:
     """
@@ -188,16 +189,19 @@ class Mouth:
                         
                         for rate in standard_rates:
                             try:
-                                # Calculate resampling ratio
-                                ratio = rate / original_rate
+                                # High-quality resampling using scipy's signal processing
+                                print(f"Attempting playback at {rate}Hz with high-quality resampling...")
                                 
-                                # Resample audio using linear interpolation
-                                new_length = int(len(audio_data) * ratio)
-                                time_original = np.linspace(0, 1, len(audio_data))
-                                time_new = np.linspace(0, 1, new_length)
-                                resampled_audio = np.interp(time_new, time_original, audio_data)
+                                # Calculate number of samples for the new sample rate
+                                num_samples = int(len(audio_data) * rate / original_rate)
                                 
-                                print(f"Attempting playback at {rate}Hz with resampling...")
+                                # Apply anti-aliasing filter and resample
+                                resampled_audio = signal.resample(audio_data, num_samples)
+                                
+                                # Normalize the resampled audio to prevent clipping
+                                if np.max(np.abs(resampled_audio)) > 1.0:
+                                    resampled_audio /= np.max(np.abs(resampled_audio))
+                                
                                 sd.play(resampled_audio, rate)
                                 sd.wait()
                                 print(f"Successfully played audio at {rate}Hz")

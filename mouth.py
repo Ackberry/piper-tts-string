@@ -160,32 +160,41 @@ class Mouth:
                 original_rate = wav_file.getframerate()
                 n_frames = wav_file.getnframes()
                 
+                print(f"Audio format: {channels} channels, {sample_width * 8} bits, {original_rate} Hz")
+                
                 # Read all frames
                 frames = wav_file.readframes(n_frames)
                 
                 # Convert bytes to numpy array
                 dtype_map = {1: np.int8, 2: np.int16, 4: np.int32}
                 audio_data = np.frombuffer(frames, dtype=dtype_map[sample_width])
+
+                # Convert to float32 and normalize to [-1, 1] range
+                audio_data = audio_data.astype(np.float32)
+                if audio_data.dtype == np.float32:
+                    if sample_width == 1:
+                        audio_data = (audio_data - 128) / 128.0
+                    elif sample_width == 2:
+                        audio_data = audio_data / 32768.0
+                    elif sample_width == 4:
+                        audio_data = audio_data / 2147483648.0
+
+                # Ensure the audio is mono (if it's stereo)
+                if channels == 2:
+                    audio_data = audio_data.reshape(-1, 2).mean(axis=1)
                 
-                # Play audio with error handling for sample rate issues
+                # Play audio with error handling for sample rate and format issues
                 print("Playing audio...")
                 try:
                     # Try playing with original framerate
                     sd.play(audio_data, original_rate)
                     sd.wait()
                 except sd.PortAudioError as e:
-                    if "Invalid sample rate" in str(e):
+                    error_msg = str(e)
+                    if "Invalid sample rate" in error_msg:
                         print(f"Sample rate issue detected. Original rate: {original_rate}Hz")
                         # Try with a standard sample rate with proper resampling
                         standard_rates = [48000, 44100, 22050, 16000]
-                        
-                        # Normalize audio data to float32 for resampling
-                        if audio_data.dtype != np.float32:
-                            audio_data = audio_data.astype(np.float32)
-                            if audio_data.dtype == np.int16:
-                                audio_data /= 32768.0  # Normalize int16 to float32
-                            elif audio_data.dtype == np.int32:
-                                audio_data /= 2147483648.0  # Normalize int32 to float32
                         
                         for rate in standard_rates:
                             try:
@@ -201,15 +210,27 @@ class Mouth:
                                 # Normalize the resampled audio to prevent clipping
                                 if np.max(np.abs(resampled_audio)) > 1.0:
                                     resampled_audio /= np.max(np.abs(resampled_audio))
+
+                                # Convert back to int16 for maximum compatibility
+                                audio_int16 = (resampled_audio * 32767).astype(np.int16)
                                 
-                                sd.play(resampled_audio, rate)
-                                sd.wait()
+                                sd.play(audio_int16, rate, blocking=True)
                                 print(f"Successfully played audio at {rate}Hz")
                                 break
-                            except sd.PortAudioError:
+                            except sd.PortAudioError as pe:
+                                print(f"Failed with rate {rate}Hz: {pe}")
                                 continue
                         else:
                             print("Failed to play audio with any standard sample rate.")
+                    elif "Sample format not supported" in error_msg:
+                        print("Sample format issue detected. Trying with int16 format...")
+                        try:
+                            # Convert to int16 for maximum compatibility
+                            audio_int16 = (audio_data * 32767).astype(np.int16)
+                            sd.play(audio_int16, original_rate, blocking=True)
+                            print("Successfully played audio with int16 format")
+                        except sd.PortAudioError as pe:
+                            print(f"Failed with int16 format: {pe}")
                     else:
                         raise
                 print("Audio playback complete.")

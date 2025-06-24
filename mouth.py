@@ -166,10 +166,29 @@ class Mouth:
                 dtype_map = {1: np.int8, 2: np.int16, 4: np.int32}
                 audio_data = np.frombuffer(frames, dtype=dtype_map[sample_width])
                 
-                # Play audio
+                # Play audio with error handling for sample rate issues
                 print("Playing audio...")
-                sd.play(audio_data, framerate)
-                sd.wait()  # Wait until audio finishes playing
+                try:
+                    # Try playing with original framerate
+                    sd.play(audio_data, framerate)
+                    sd.wait()
+                except sd.PortAudioError as e:
+                    if "Invalid sample rate" in str(e):
+                        print("Sample rate issue detected. Trying with default sample rate...")
+                        # Try with a standard sample rate
+                        standard_rates = [44100, 48000, 22050, 16000]
+                        for rate in standard_rates:
+                            try:
+                                sd.play(audio_data, rate)
+                                sd.wait()
+                                print(f"Successfully played audio at {rate}Hz")
+                                break
+                            except sd.PortAudioError:
+                                continue
+                        else:
+                            print("Failed to play audio with any standard sample rate.")
+                    else:
+                        raise
                 print("Audio playback complete.")
 
         except subprocess.CalledProcessError as e:

@@ -1,15 +1,5 @@
-import os
-import sys
-import tarfile
-import urllib.request
-import shutil
-import glob
-import subprocess
-import platform
-import tempfile
-import sounddevice as sd
-import wave
-import numpy as np
+import os, sys, tarfile, urllib.request, shutil, glob, subprocess, platform
+import tempfile, sounddevice as sd, wave, numpy as np
 from scipy import signal
 
 class Mouth:
@@ -20,271 +10,79 @@ class Mouth:
         """
         Initializes the Mouth class, ensuring the Piper binary and model files are ready.
         """
-        # Check if running on Linux
         if sys.platform not in ["linux", "linux2"]:
-            raise RuntimeError("This script is designed for Linux systems only.")
+            raise RuntimeError("Linux systems only")
         
-        self.piper_binary_path = self._get_piper_binary_path()
-        if not self._ensure_piper_binary():
-            raise RuntimeError("Failed to set up Piper TTS binary.")
-        
-        self.onnx_file, self.json_file = self._detect_model_files()
-        if not self.onnx_file or not self.json_file:
-            raise FileNotFoundError("Could not find required .onnx and .json model files in the current directory.")
+        self.piper_path = "piper/piper"
+        self._setup_piper()
+        self.onnx_file, self.json_file = next(((o, f"{os.path.splitext(o)[0]}.onnx.json" if f"{os.path.splitext(o)[0]}.onnx.json" in j else f"{os.path.splitext(o)[0]}.json") 
+            for o in glob.glob("*.onnx") for j in [glob.glob("*.json")] if j), (None, None))
+        if not (self.onnx_file and self.json_file):
+            raise FileNotFoundError("Missing model files")
 
-    def _get_piper_binary_path(self):
-        """Returns the expected path to the piper binary."""
-        return "piper/piper"
+    def _setup_piper(self):
+        if not (os.path.exists(self.piper_path) and os.access(self.piper_path, os.X_OK)):
+            try:
+                if os.path.exists("piper"): shutil.rmtree("piper")
+                url = f"https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_{'x86_64' if platform.machine()=='x86_64' else 'aarch64'}.tar.gz"
+                tar_name = os.path.basename(url)
+                urllib.request.urlretrieve(url, tar_name)
+                with tarfile.open(tar_name, "r:gz") as tar: tar.extractall()
+                if os.path.exists(self.piper_path):
+                    os.chmod(self.piper_path, 0o755)
+                    os.remove(tar_name)
+                    return
+            except Exception as e:
+                raise RuntimeError(f"Piper setup failed: {e}")
+            raise RuntimeError("Piper binary not found after setup")
 
-    def _get_piper_download_url(self):
-        """
-        Determines the correct Piper TTS binary download URL based on system architecture.
-        """
-        machine = platform.machine()
-
-        if machine == "x86_64":
-            arch = "x86_64"
-        elif machine == "aarch64":
-            arch = "aarch64"
-        else:
-            raise RuntimeError(f"Unsupported Linux architecture: {machine}. Only x86_64 and aarch64 are supported.")
-        
-        piper_version = "2023.11.14-2"
-        piper_tar_name = f"piper_linux_{arch}.tar.gz"
-        return f"https://github.com/rhasspy/piper/releases/download/{piper_version}/{piper_tar_name}"
-
-    def _ensure_piper_binary(self):
-        """
-        Ensures the Piper binary is downloaded, extracted, and executable.
-        """
-        if os.path.exists(self.piper_binary_path) and os.access(self.piper_binary_path, os.X_OK):
-            print(f"Piper binary '{self.piper_binary_path}' already exists and is executable.")
-            return True
-
-        print("Piper binary not found or not executable. Downloading...")
-        
-        piper_tar_url = self._get_piper_download_url()
-        piper_tar_name = os.path.basename(piper_tar_url)
-        
-        try:
-            # Clean up previous incomplete installations
-            if os.path.exists("piper"):
-                shutil.rmtree("piper")
-
-            print(f"Downloading from {piper_tar_url}...")
-            urllib.request.urlretrieve(piper_tar_url, piper_tar_name)
-            print("Download complete. Extracting...")
-
-            with tarfile.open(piper_tar_name, "r:gz") as tar:
-                tar.extractall()
-
-            if os.path.exists(self.piper_binary_path):
-                os.chmod(self.piper_binary_path, 0o755)
-                print("Piper binary is ready.")
-            else:
-                print(f"Error: Piper binary not found at '{self.piper_binary_path}' after extraction.")
-                return False
-
-            os.remove(piper_tar_name)
-            return True
-
-        except Exception as e:
-            print(f"Failed to download or extract Piper: {e}")
-            return False
-            
-    def _detect_model_files(self):
-        """
-        Detects the ONNX model and JSON config files in the current directory.
-        """
-        onnx_files = glob.glob("*.onnx")
-        json_files = glob.glob("*.json")
-
-        if not onnx_files:
-            print("Error: No .onnx model file found in the folder.")
-            return None, None
-        if not json_files:
-            print("Error: No .json config file found in the folder.")
-            return None, None
-
-        # Try to match .onnx and .json files by their base name
-        for onnx in onnx_files:
-            base = os.path.splitext(onnx)[0]
-            # Look for exact match first
-            if f"{base}.onnx.json" in json_files:
-                js = f"{base}.onnx.json"
-                print(f"Using model: {onnx}")
-                print(f"Using config: {js}")
-                return onnx, js
-            # Also check for just the base name with .json
-            elif f"{base}.json" in json_files:
-                js = f"{base}.json"
-                print(f"Using model: {onnx}")
-                print(f"Using config: {js}")
-                return onnx, js
-        
-        # Fallback to using the first found files if no direct match is found
-        print(f"Warning: No matching model/config pair found. Using first available files.")
-        print(f"Using model: {onnx_files[0]}")
-        print(f"Using config: {json_files[0]}")
-        return onnx_files[0], json_files[0]
-
-    def speak(self, text: str):
+    def speak(self, text):
         """
         Converts the given text to speech and plays it directly through the speakers.
         """
-        if not text.strip():
-            print("Input text is empty. Nothing to synthesize.")
-            return
-
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp_wav:
-            temp_path = temp_wav.name
-
-        try:
-            # Generate speech to temporary file
-            command = [
-                f"./{self.piper_binary_path}",
-                "--model", self.onnx_file,
-                "--config", self.json_file,
-                "--output_file", temp_path
-            ]
-
-            print(f"Running Piper TTS: {' '.join(command)}")
-            process = subprocess.run(command, input=text.encode("utf-8"), capture_output=True, check=True)
-            
-            # Read and play the temporary WAV file
-            with wave.open(temp_path, 'rb') as wav_file:
-                # Get WAV file parameters
-                channels = wav_file.getnchannels()
-                sample_width = wav_file.getsampwidth()
-                original_rate = wav_file.getframerate()
-                n_frames = wav_file.getnframes()
-                
-                print(f"Audio format: {channels} channels, {sample_width * 8} bits, {original_rate} Hz")
-                
-                # Read all frames
-                frames = wav_file.readframes(n_frames)
-                
-                # Convert bytes to numpy array
-                dtype_map = {1: np.int8, 2: np.int16, 4: np.int32}
-                audio_data = np.frombuffer(frames, dtype=dtype_map[sample_width])
-
-                # Convert to float32 and normalize to [-1, 1] range
-                audio_data = audio_data.astype(np.float32)
-                if audio_data.dtype == np.float32:
-                    if sample_width == 1:
-                        audio_data = (audio_data - 128) / 128.0
-                    elif sample_width == 2:
-                        audio_data = audio_data / 32768.0
-                    elif sample_width == 4:
-                        audio_data = audio_data / 2147483648.0
-
-                # Ensure the audio is mono (if it's stereo)
-                if channels == 2:
-                    audio_data = audio_data.reshape(-1, 2).mean(axis=1)
-                
-                # Play audio with error handling for sample rate and format issues
-                print("Playing audio...")
-                try:
-                    # Try playing with original framerate
-                    sd.play(audio_data, original_rate)
-                    sd.wait()
-                except sd.PortAudioError as e:
-                    error_msg = str(e)
-                    if "Invalid sample rate" in error_msg:
-                        print(f"Sample rate issue detected. Original rate: {original_rate}Hz")
-                        # Try with a standard sample rate with proper resampling
-                        standard_rates = [48000, 44100, 22050, 16000]
-                        
-                        for rate in standard_rates:
-                            try:
-                                # High-quality resampling using scipy's signal processing
-                                print(f"Attempting playback at {rate}Hz with high-quality resampling...")
-                                
-                                # Calculate number of samples for the new sample rate
-                                num_samples = int(len(audio_data) * rate / original_rate)
-                                
-                                # Apply anti-aliasing filter and resample
-                                resampled_audio = signal.resample(audio_data, num_samples)
-                                
-                                # Normalize the resampled audio to prevent clipping
-                                if np.max(np.abs(resampled_audio)) > 1.0:
-                                    resampled_audio /= np.max(np.abs(resampled_audio))
-
-                                # Convert back to int16 for maximum compatibility
-                                audio_int16 = (resampled_audio * 32767).astype(np.int16)
-                                
-                                sd.play(audio_int16, rate, blocking=True)
-                                print(f"Successfully played audio at {rate}Hz")
-                                break
-                            except sd.PortAudioError as pe:
-                                print(f"Failed with rate {rate}Hz: {pe}")
-                                continue
-                        else:
-                            print("Failed to play audio with any standard sample rate.")
-                    elif "Sample format not supported" in error_msg:
-                        print("Sample format issue detected. Trying with int16 format...")
-                        try:
-                            # Convert to int16 for maximum compatibility
-                            audio_int16 = (audio_data * 32767).astype(np.int16)
-                            sd.play(audio_int16, original_rate, blocking=True)
-                            print("Successfully played audio with int16 format")
-                        except sd.PortAudioError as pe:
-                            print(f"Failed with int16 format: {pe}")
-                    else:
-                        raise
-                print("Audio playback complete.")
-
-        except subprocess.CalledProcessError as e:
-            print(f"Piper failed with return code {e.returncode}.")
-            print(f"Stderr:\n{e.stderr.decode('utf-8')}")
-            print(f"Stdout:\n{e.stdout.decode('utf-8')}")
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
-        finally:
-            # Clean up the temporary file
+        if not text.strip(): return
+        
+        with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp:
             try:
-                os.unlink(temp_path)
-            except:
-                pass
+                subprocess.run([f"./{self.piper_path}", "--model", self.onnx_file,
+                              "--config", self.json_file, "--output_file", temp.name],
+                             input=text.encode(), capture_output=True, check=True)
+                
+                with wave.open(temp.name, 'rb') as wav:
+                    audio = np.frombuffer(wav.readframes(wav.getnframes()),
+                                        dtype={1: np.int8, 2: np.int16, 4: np.int32}[wav.getsampwidth()])
+                    
+                    audio = audio.astype(np.float32)
+                    if wav.getsampwidth() == 1: audio = (audio - 128) / 128.0
+                    elif wav.getsampwidth() == 2: audio /= 32768.0
+                    elif wav.getsampwidth() == 4: audio /= 2147483648.0
+                    
+                    if wav.getnchannels() == 2:
+                        audio = audio.reshape(-1, 2).mean(axis=1)
+                    
+                    try:
+                        sd.play(audio, wav.getframerate())
+                        sd.wait()
+                    except sd.PortAudioError as e:
+                        if "Invalid sample rate" in str(e):
+                            for rate in [48000, 44100, 22050, 16000]:
+                                try:
+                                    resampled = signal.resample(audio, int(len(audio) * rate / wav.getframerate()))
+                                    if np.max(np.abs(resampled)) > 1.0: resampled /= np.max(np.abs(resampled))
+                                    sd.play((resampled * 32767).astype(np.int16), rate, blocking=True)
+                                    break
+                                except sd.PortAudioError: continue
+                        elif "Sample format not supported" in str(e):
+                            sd.play((audio * 32767).astype(np.int16), wav.getframerate(), blocking=True)
+            except Exception as e:
+                print(f"Error: {e}")
+            finally:
+                try: os.unlink(temp.name)
+                except: pass
 
 if __name__ == "__main__":
     try:
-        mouth = Mouth()
-        
-        print("\nEnter the text to convert to speech.")
-        print("Press Enter twice (double Enter) to finish.")
-        
-        input_lines = []
-        empty_line_count = 0
-        
-        while True:
-            try:
-                line = input()
-                if line.strip() == "":
-                    empty_line_count += 1
-                    if empty_line_count >= 2:
-                        break
-                else:
-                    empty_line_count = 0
-                    input_lines.append(line)
-            except EOFError:
-                break
-        
-        if not input_lines:
-            print("No input provided. Exiting.")
-            sys.exit(0)
-            
-        text_to_speak = "\n".join(input_lines).strip()
-        
-        if text_to_speak:
-            mouth.speak(text_to_speak)
-        else:
-            print("Input was empty after stripping whitespace. Nothing to do.")
-
-    except (RuntimeError, FileNotFoundError) as e:
-        print(f"Initialization Error: {e}")
-        sys.exit(1)
+        Mouth().speak("Hello, world!")
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"Error: {e}")
         sys.exit(1) 

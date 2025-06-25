@@ -32,29 +32,40 @@ class Mouth:
 
     def _ensure_piper_installed(self):
         """
-        Ensures Piper is installed, installing it if necessary.
+        Ensures Piper and its dependencies are installed.
         """
         try:
             import piper
             return  # Piper is already installed
         except ImportError:
-            print("Installing Piper... This may take a minute...")
+            print("Installing Piper and dependencies... This may take a few minutes...")
             
             with tempfile.TemporaryDirectory() as temp_dir:
                 try:
                     # Clone Piper repository
                     subprocess.run(
-                        ["git", "clone", "https://github.com/rhasspy/piper.git"],
+                        ["git", "clone", "--depth=1", "https://github.com/rhasspy/piper.git"],
                         cwd=temp_dir,
                         check=True,
                         capture_output=True
                     )
                     
-                    # Install Piper
-                    piper_dir = os.path.join(temp_dir, "piper", "src", "python")
+                    piper_dir = os.path.join(temp_dir, "piper")
+                    
+                    # First install piper-phonemize
+                    phonemize_dir = os.path.join(piper_dir, "src", "python_phonemize")
                     subprocess.run(
                         [sys.executable, "-m", "pip", "install", "-e", "."],
-                        cwd=piper_dir,
+                        cwd=phonemize_dir,
+                        check=True,
+                        capture_output=True
+                    )
+                    
+                    # Then install Piper
+                    piper_python_dir = os.path.join(piper_dir, "src", "python")
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-e", "."],
+                        cwd=piper_python_dir,
                         check=True,
                         capture_output=True
                     )

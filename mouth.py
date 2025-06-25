@@ -1,6 +1,7 @@
 import os, sys, tarfile, urllib.request, shutil, glob, subprocess, platform
-import tempfile, sounddevice as sd, wave, numpy as np
+import tempfile, wave, numpy as np
 from scipy import signal
+import pygame
 
 class Mouth:
     """
@@ -20,15 +21,8 @@ class Mouth:
         if not (self.onnx_file and self.json_file):
             raise FileNotFoundError("Missing model files")
         
-        # Try to find a working audio device
-        try:
-            devices = sd.query_devices()
-            default_output = sd.query_devices(kind='output')
-            self.device = default_output['name']
-            print(f"Using audio device: {self.device}")
-        except:
-            self.device = None
-            print("Warning: Could not query audio devices")
+        # Initialize pygame mixer
+        pygame.mixer.init()
 
     def _setup_piper(self):
         if not (os.path.exists(self.piper_path) and os.access(self.piper_path, os.X_OK)):
@@ -54,65 +48,19 @@ class Mouth:
         
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp:
             try:
+                # Generate speech using piper
                 subprocess.run([f"./{self.piper_path}", "--model", self.onnx_file,
                               "--config", self.json_file, "--output_file", temp.name],
                              input=text.encode(), capture_output=True, check=True)
                 
-                with wave.open(temp.name, 'rb') as wav:
-                    audio = np.frombuffer(wav.readframes(wav.getnframes()),
-                                        dtype={1: np.int8, 2: np.int16, 4: np.int32}[wav.getsampwidth()])
-                    
-                    # Convert to float32 in range [-1, 1]
-                    audio = audio.astype(np.float32)
-                    if wav.getsampwidth() == 1: audio = (audio - 128) / 128.0
-                    elif wav.getsampwidth() == 2: audio /= 32768.0
-                    elif wav.getsampwidth() == 4: audio /= 2147483648.0
-                    
-                    # Convert stereo to mono if needed
-                    if wav.getnchannels() == 2:
-                        audio = audio.reshape(-1, 2).mean(axis=1)
-
-                    # Normalize audio
-                    if np.max(np.abs(audio)) > 1.0:
-                        audio /= np.max(np.abs(audio))
-
-                    # Try to play with basic settings first
-                    try:
-                        if self.device:
-                            sd.play(audio, wav.getframerate(), device=self.device)
-                        else:
-                            sd.play(audio, wav.getframerate())
-                        sd.wait()
-                        return
-                    except sd.PortAudioError as e:
-                        print(f"Initial playback failed: {e}")
-
-                    # If that fails, try different sample rates with int16 format
-                    for rate in [48000, 44100, 22050, 16000]:
-                        try:
-                            # Resample if needed
-                            if rate != wav.getframerate():
-                                audio_data = signal.resample(audio, int(len(audio) * rate / wav.getframerate()))
-                                if np.max(np.abs(audio_data)) > 1.0:
-                                    audio_data /= np.max(np.abs(audio_data))
-                            else:
-                                audio_data = audio
-
-                            # Convert to int16
-                            int16_data = (audio_data * 32767).astype(np.int16)
-                            
-                            # Try with device if available
-                            if self.device:
-                                sd.play(int16_data, rate, device=self.device)
-                            else:
-                                sd.play(int16_data, rate)
-                            sd.wait()
-                            return
-                        except Exception as e:
-                            print(f"Failed with rate {rate}: {e}")
-                            continue
-                    
-                    raise RuntimeError("Could not find working audio configuration")
+                # Play the audio using pygame
+                try:
+                    pygame.mixer.music.load(temp.name)
+                    pygame.mixer.music.play()
+                    while pygame.mixer.music.get_busy():
+                        pygame.time.Clock().tick(10)
+                except Exception as e:
+                    print(f"Playback error: {e}")
                     
             except Exception as e:
                 print(f"Error: {e}")

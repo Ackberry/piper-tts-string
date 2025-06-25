@@ -3,7 +3,7 @@ import tempfile
 
 class Mouth:
     """
-    A class to handle text-to-speech using Piper TTS with direct audio playback.
+    A class to handle text-to-speech using Piper TTS with direct audio playback using ALSA.
     """
     def __init__(self):
         """
@@ -37,11 +37,10 @@ class Mouth:
 
     def speak(self, text):
         """
-        Converts the given text to speech and plays it directly through the speakers.
+        Converts the given text to speech and plays it directly through the speakers using ALSA.
         """
         if not text.strip(): return
         
-        print(f"Converting text to speech: '{text}'")
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp:
             try:
                 # Generate speech using piper

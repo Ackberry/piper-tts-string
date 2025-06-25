@@ -1,7 +1,5 @@
 import os, sys, tarfile, urllib.request, shutil, glob, subprocess, platform
-import tempfile, wave, numpy as np
-from scipy import signal
-import pygame
+import tempfile
 
 class Mouth:
     """
@@ -20,9 +18,6 @@ class Mouth:
             for o in glob.glob("*.onnx") for j in [glob.glob("*.json")] if j), (None, None))
         if not (self.onnx_file and self.json_file):
             raise FileNotFoundError("Missing model files")
-        
-        # Initialize pygame mixer
-        pygame.mixer.init()
 
     def _setup_piper(self):
         if not (os.path.exists(self.piper_path) and os.access(self.piper_path, os.X_OK)):
@@ -46,6 +41,7 @@ class Mouth:
         """
         if not text.strip(): return
         
+        print(f"Converting text to speech: '{text}'")
         with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as temp:
             try:
                 # Generate speech using piper
@@ -53,14 +49,27 @@ class Mouth:
                               "--config", self.json_file, "--output_file", temp.name],
                              input=text.encode(), capture_output=True, check=True)
                 
-                # Play the audio using pygame
-                try:
-                    pygame.mixer.music.load(temp.name)
-                    pygame.mixer.music.play()
-                    while pygame.mixer.music.get_busy():
-                        pygame.time.Clock().tick(10)
-                except Exception as e:
-                    print(f"Playback error: {e}")
+                # Try different audio devices in order of preference
+                devices = [
+                    'plughw:1,0',  # USB Audio device
+                    'plughw:0,0',  # HDMI-0
+                    'plughw:2,0',  # HDMI-1
+                    'default'      # System default
+                ]
+                
+                success = False
+                for device in devices:
+                    try:
+                        print(f"Trying audio device: {device}")
+                        subprocess.run(['aplay', '-D', device, temp.name], check=True)
+                        success = True
+                        break
+                    except subprocess.CalledProcessError as e:
+                        print(f"Failed to play on {device}: {e}")
+                        continue
+                
+                if not success:
+                    print("Failed to play audio on any available device")
                     
             except Exception as e:
                 print(f"Error: {e}")

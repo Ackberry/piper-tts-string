@@ -52,28 +52,48 @@ class Mouth:
                     audio = np.frombuffer(wav.readframes(wav.getnframes()),
                                         dtype={1: np.int8, 2: np.int16, 4: np.int32}[wav.getsampwidth()])
                     
+                    # Convert to float32 in range [-1, 1]
                     audio = audio.astype(np.float32)
                     if wav.getsampwidth() == 1: audio = (audio - 128) / 128.0
                     elif wav.getsampwidth() == 2: audio /= 32768.0
                     elif wav.getsampwidth() == 4: audio /= 2147483648.0
                     
+                    # Convert stereo to mono if needed
                     if wav.getnchannels() == 2:
                         audio = audio.reshape(-1, 2).mean(axis=1)
                     
-                    try:
-                        sd.play(audio, wav.getframerate())
-                        sd.wait()
-                    except sd.PortAudioError as e:
-                        if "Invalid sample rate" in str(e):
-                            for rate in [48000, 44100, 22050, 16000]:
-                                try:
-                                    resampled = signal.resample(audio, int(len(audio) * rate / wav.getframerate()))
-                                    if np.max(np.abs(resampled)) > 1.0: resampled /= np.max(np.abs(resampled))
-                                    sd.play((resampled * 32767).astype(np.int16), rate, blocking=True)
-                                    break
-                                except sd.PortAudioError: continue
-                        elif "Sample format not supported" in str(e):
-                            sd.play((audio * 32767).astype(np.int16), wav.getframerate(), blocking=True)
+                    # Try different sample rates and formats
+                    original_rate = wav.getframerate()
+                    sample_rates = [original_rate, 48000, 44100, 22050, 16000]
+                    
+                    last_error = None
+                    for rate in sample_rates:
+                        try:
+                            # Resample if needed
+                            if rate != original_rate:
+                                audio_data = signal.resample(audio, int(len(audio) * rate / original_rate))
+                                if np.max(np.abs(audio_data)) > 1.0:
+                                    audio_data /= np.max(np.abs(audio_data))
+                            else:
+                                audio_data = audio
+
+                            # Try float32 first
+                            try:
+                                sd.play(audio_data, rate)
+                                sd.wait()
+                                return
+                            except sd.PortAudioError:
+                                # If float32 fails, try int16
+                                int16_data = (audio_data * 32767).astype(np.int16)
+                                sd.play(int16_data, rate, blocking=True)
+                                return
+                        except Exception as e:
+                            last_error = e
+                            continue
+                    
+                    if last_error:
+                        raise RuntimeError(f"Failed to play audio: {last_error}")
+                    
             except Exception as e:
                 print(f"Error: {e}")
             finally:

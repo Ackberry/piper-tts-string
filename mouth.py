@@ -19,6 +19,16 @@ class Mouth:
             for o in glob.glob("*.onnx") for j in [glob.glob("*.json")] if j), (None, None))
         if not (self.onnx_file and self.json_file):
             raise FileNotFoundError("Missing model files")
+        
+        # Try to find a working audio device
+        try:
+            devices = sd.query_devices()
+            default_output = sd.query_devices(kind='output')
+            self.device = default_output['name']
+            print(f"Using audio device: {self.device}")
+        except:
+            self.device = None
+            print("Warning: Could not query audio devices")
 
     def _setup_piper(self):
         if not (os.path.exists(self.piper_path) and os.access(self.piper_path, os.X_OK)):
@@ -61,38 +71,48 @@ class Mouth:
                     # Convert stereo to mono if needed
                     if wav.getnchannels() == 2:
                         audio = audio.reshape(-1, 2).mean(axis=1)
-                    
-                    # Try different sample rates and formats
-                    original_rate = wav.getframerate()
-                    sample_rates = [original_rate, 48000, 44100, 22050, 16000]
-                    
-                    last_error = None
-                    for rate in sample_rates:
+
+                    # Normalize audio
+                    if np.max(np.abs(audio)) > 1.0:
+                        audio /= np.max(np.abs(audio))
+
+                    # Try to play with basic settings first
+                    try:
+                        if self.device:
+                            sd.play(audio, wav.getframerate(), device=self.device)
+                        else:
+                            sd.play(audio, wav.getframerate())
+                        sd.wait()
+                        return
+                    except sd.PortAudioError as e:
+                        print(f"Initial playback failed: {e}")
+
+                    # If that fails, try different sample rates with int16 format
+                    for rate in [48000, 44100, 22050, 16000]:
                         try:
                             # Resample if needed
-                            if rate != original_rate:
-                                audio_data = signal.resample(audio, int(len(audio) * rate / original_rate))
+                            if rate != wav.getframerate():
+                                audio_data = signal.resample(audio, int(len(audio) * rate / wav.getframerate()))
                                 if np.max(np.abs(audio_data)) > 1.0:
                                     audio_data /= np.max(np.abs(audio_data))
                             else:
                                 audio_data = audio
 
-                            # Try float32 first
-                            try:
-                                sd.play(audio_data, rate)
-                                sd.wait()
-                                return
-                            except sd.PortAudioError:
-                                # If float32 fails, try int16
-                                int16_data = (audio_data * 32767).astype(np.int16)
-                                sd.play(int16_data, rate, blocking=True)
-                                return
+                            # Convert to int16
+                            int16_data = (audio_data * 32767).astype(np.int16)
+                            
+                            # Try with device if available
+                            if self.device:
+                                sd.play(int16_data, rate, device=self.device)
+                            else:
+                                sd.play(int16_data, rate)
+                            sd.wait()
+                            return
                         except Exception as e:
-                            last_error = e
+                            print(f"Failed with rate {rate}: {e}")
                             continue
                     
-                    if last_error:
-                        raise RuntimeError(f"Failed to play audio: {last_error}")
+                    raise RuntimeError("Could not find working audio configuration")
                     
             except Exception as e:
                 print(f"Error: {e}")

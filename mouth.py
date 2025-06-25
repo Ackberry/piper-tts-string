@@ -1,6 +1,5 @@
-import os, sys, glob
+import os, sys, glob, subprocess, tempfile, shutil
 import numpy as np
-from piper.voice import PiperVoice
 import sounddevice as sd
 
 class Mouth:
@@ -14,6 +13,12 @@ class Mouth:
         if sys.platform not in ["linux", "linux2"]:
             raise RuntimeError("Linux systems only")
         
+        # Ensure Piper is installed
+        self._ensure_piper_installed()
+        
+        # Now we can import PiperVoice
+        from piper import PiperVoice
+        
         # Find model files
         self.onnx_file = next((o for o in glob.glob("*.onnx")), None)
         if not self.onnx_file:
@@ -24,6 +29,42 @@ class Mouth:
             self.voice = PiperVoice.load(self.onnx_file)
         except Exception as e:
             raise RuntimeError(f"Failed to load voice model: {e}")
+
+    def _ensure_piper_installed(self):
+        """
+        Ensures Piper is installed, installing it if necessary.
+        """
+        try:
+            import piper
+            return  # Piper is already installed
+        except ImportError:
+            print("Installing Piper... This may take a minute...")
+            
+            with tempfile.TemporaryDirectory() as temp_dir:
+                try:
+                    # Clone Piper repository
+                    subprocess.run(
+                        ["git", "clone", "https://github.com/rhasspy/piper.git"],
+                        cwd=temp_dir,
+                        check=True,
+                        capture_output=True
+                    )
+                    
+                    # Install Piper
+                    piper_dir = os.path.join(temp_dir, "piper", "src", "python")
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-e", "."],
+                        cwd=piper_dir,
+                        check=True,
+                        capture_output=True
+                    )
+                    
+                    print("Piper installation completed successfully!")
+                    
+                except subprocess.CalledProcessError as e:
+                    raise RuntimeError(f"Failed to install Piper: {e.stderr.decode()}")
+                except Exception as e:
+                    raise RuntimeError(f"Failed to install Piper: {e}")
 
     def speak(self, text):
         """

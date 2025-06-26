@@ -27,6 +27,7 @@ class Mouth:
         # Load the Piper voice model
         try:
             self.voice = PiperVoice.load(self.onnx_file)
+            print(f"Voice loaded: {os.path.basename(self.onnx_file)} | Sample rate: {self.voice.config.sample_rate} Hz")
         except Exception as e:
             raise RuntimeError(f"Failed to load voice model: {e}")
 
@@ -38,7 +39,7 @@ class Mouth:
             import piper
             return  # Piper is already installed
         except ImportError:
-            print("Installing Piper and dependencies... This may take a few minutes...")
+            print("Installing Piper... Please wait.")
             
             with tempfile.TemporaryDirectory() as temp_dir:
                 try:
@@ -70,7 +71,7 @@ class Mouth:
                         capture_output=True
                     )
                     
-                    print("Piper installation completed successfully!")
+                    print("Piper installed successfully!")
                     
                 except subprocess.CalledProcessError as e:
                     raise RuntimeError(f"Failed to install Piper: {e.stderr.decode()}")
@@ -83,6 +84,8 @@ class Mouth:
         """
         if not text.strip(): 
             return
+        
+        print(f"Speaking: '{text}' | Rate: {self.voice.config.sample_rate} Hz")
         
         try:
             # Create audio output stream
@@ -98,16 +101,11 @@ class Mouth:
                 audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
                 stream.write(audio_data)
 
+            print("✓ Speech completed")
+
         except Exception as e:
-            print(f"Error during speech synthesis: {e}")
+            print(f"✗ Error: {e}")
         finally:
             if 'stream' in locals():
                 stream.stop()
-                stream.close()
-
-if __name__ == "__main__":
-    try:
-        Mouth().speak("Hello, world!")
-    except Exception as e:
-        print(f"Error: {e}")
-        sys.exit(1) 
+                stream.close() 

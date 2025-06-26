@@ -43,13 +43,6 @@ class Mouth:
             
             with tempfile.TemporaryDirectory() as temp_dir:
                 try:
-                    # First install piper-phonemize from PyPI
-                    subprocess.run(
-                        [sys.executable, "-m", "pip", "install", "piper-phonemize"],
-                        check=True,
-                        capture_output=True
-                    )
-                    
                     # Clone Piper repository
                     subprocess.run(
                         ["git", "clone", "--depth=1", "https://github.com/rhasspy/piper.git"],
@@ -59,6 +52,15 @@ class Mouth:
                     )
                     
                     piper_dir = os.path.join(temp_dir, "piper")
+                    
+                    # Install piper-phonemize from source
+                    phonemize_dir = os.path.join(piper_dir, "src", "python_phonemize")
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-e", "."],
+                        cwd=phonemize_dir,
+                        check=True,
+                        capture_output=True
+                    )
                     
                     # Install Piper from the correct directory
                     piper_python_dir = os.path.join(piper_dir, "src", "python_run")

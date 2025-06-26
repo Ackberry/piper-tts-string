@@ -20,7 +20,7 @@ class Mouth:
 
     def _find_model_files(self):
         """
-        Finds the ONNX model and its corresponding JSON config file.
+        Finds the ONNX model and its corresponding JSON config file.s
         """
         for onnx in glob.glob("*.onnx"):
             base = os.path.splitext(onnx)[0]

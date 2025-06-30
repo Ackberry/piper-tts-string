@@ -1,45 +1,67 @@
-# Piper TTS String-to-Speech
+# Piper TTS for Raspberry Pi 5
 
-### System
-- Linux (x86_64 or aarch64)
-- Python 3.7+
-- Working audio device
+Simple text-to-speech system for Raspberry Pi 5 using Piper TTS engine.
 
-### Python Packages
+## What it does
+
+- **mouth.py**: Contains the `Mouth` class that converts text to speech and plays it directly through Pi 5 speakers
+- **test_mouth.py**: Simple test script that imports `Mouth` class and speaks a test sentence
+
+## Setup for Raspberry Pi 5
+
+### 1. Install System Dependencies
 ```bash
-pip install sounddevice numpy scipy
+sudo apt-get update
+sudo apt-get install portaudio19-dev alsa-utils python3-pip
 ```
 
-### System Libraries
-Ubuntu/Debian:
+### 2. Install Python Dependencies
 ```bash
-sudo apt-get install portaudio19-dev
+pip install -r requirements.txt
 ```
 
-Fedora:
+### 3. Install Piper TTS Engine
 ```bash
-sudo dnf install portaudio-devel
+# Download Piper for Raspberry Pi 5 (AArch64)
+wget https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz
+
+# Extract and setup
+tar -xzf piper_linux_aarch64.tar.gz
+rm piper_linux_aarch64.tar.gz
+chmod +x piper/piper
+
+# Verify installation
+./piper/piper --help
 ```
 
-### Model Files
-Place in working directory:
-- ONNX model file (e.g., `en_GB-aru-medium.onnx`)
-- JSON config file (e.g., `en_GB-aru-medium.onnx.json`)
-
-Download from [Piper releases](https://github.com/rhasspy/piper/releases)
-
-
-
-
-### Basic Example
-```python
-from mouth import Mouth
-Mouth().speak("Hello, world!")
+### 4. Download Voice Model
+```bash
+# Download US English female voice model for Pi 5
+wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx
+wget https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/hfc_female/medium/en_US-hfc_female-medium.onnx.json
 ```
 
+## How to Use
 
-## Usage 
-- Make sure mouth.py, test_mouth.py, .onnx voice model and its .json config are in the same directory.
-- Install the required dependencies.
-- Update test_mouth.py's code with whatever the user want to output. (A current string sentence is already set for tests)
-- run test_mouth.py
+
+
+### Run the Test
+```bash
+python3 test_mouth.py
+```
+
+This will output: `Converting to speech: 'Hello there! This is a test of the text to speech system.'` and play the audio.
+
+
+## Audio Setup on Pi 5
+
+```bash
+# Test audio output
+aplay /usr/share/sounds/alsa/Front_Left.wav
+
+# Configure audio output (choose 3.5mm jack or HDMI)
+sudo raspi-config
+# Navigate to: Advanced Options > Audio
+```
+
+s

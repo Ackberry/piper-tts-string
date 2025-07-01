@@ -14,10 +14,11 @@ def test_basic_speech():
         # Test with a simple string
         test_text = "Hello there! This is a test of the text to speech system."
         tts.speak(test_text)
+        print('Successful!')
         
     except Exception as e:
         print(f" Speech test failed: {e}")
         return False
 
 if __name__ == "__main__":
-    test_basic_speech() 
+    test_basic_speech()

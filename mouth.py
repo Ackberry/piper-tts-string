@@ -5,9 +5,6 @@ import gc
 from piper.voice import PiperVoice
 
 class Mouth:
-    """
-    Simplified TTS handler for Raspberry Pi 5 using Piper Python module and direct audio playback.
-    """
     def __init__(self, chunk_size=1024):
         self.chunk_size = chunk_size
         self.voicedir = "./"
@@ -25,7 +22,7 @@ class Mouth:
     def speak(self, text):
         if not text.strip():
             return
-        # Synthesize audio using PiperVoice
+        
         audio_chunks = []
         for audio_bytes in self.voice.synthesize_stream_raw(text):
             int_data = np.frombuffer(audio_bytes, dtype=np.int16)
